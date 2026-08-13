@@ -1,0 +1,48 @@
+Add-Type -AssemblyName System.Windows.Forms
+
+# Folder selection dialog
+$folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+$folderBrowser.Description = "Select the folder to scan"
+$folderBrowser.ShowNewFolderButton = $false
+
+$folderBrowser.ShowDialog()
+
+$rootFolder = $folderBrowser.SelectedPath
+Write-Host "Scanning folder: $rootFolder"
+
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$outputFile = Join-Path $rootFolder "MD5_Report_$timestamp.txt"
+
+Write-Host "Output will be written to: $outputFile"
+Write-Host "Calculating MD5 hashes... This may take a while for large folders."
+
+$results = @()
+$fileCount = 0
+$errorCount = 0
+
+Get-ChildItem -Path $rootFolder -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+        $hash = Get-FileHash -Path $_.FullName -Algorithm MD5 -ErrorAction Stop
+        $line = "$($_.FullName) ; $($hash.Hash)"
+        $results += $line
+        $fileCount++
+        
+        # Progress feedback every 50 files
+        if ($fileCount % 50 -eq 0) {
+            Write-Host "Processed $fileCount files..."
+        }
+    }
+    catch {
+        $errorCount++
+        Write-Warning "Could not process: $($_.FullName) - $($_.Exception.Message)"
+    }
+}
+
+# Outputti
+$results | Out-File -FilePath $outputFile -Encoding utf8
+
+Write-Host ""
+Write-Host "Done!"
+Write-Host "Files processed : $fileCount"
+Write-Host "Errors          : $errorCount"
+Write-Host "Report saved to : $outputFile"
