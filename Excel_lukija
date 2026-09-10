@@ -1,0 +1,70 @@
+Add-Type -AssemblyName System.Windows.Forms
+
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Filter = "CSV files (*.csv)|*.csv|Text files (*.txt)|*.txt|All files (*.*)|*.*"
+$dialog.Title = "Select CSV file to open in Excel as Text"
+$dialog.Multiselect = $false
+
+if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+    Write-Host "No file selected. Exiting."
+    exit
+}
+
+$CsvPath = $dialog.FileName
+Write-Host "Selected file: $CsvPath"
+
+# Detect delimiter
+$firstLine = Get-Content -Path $CsvPath -TotalCount 1 -Encoding Default
+$Delimiter = if ($firstLine -match ";") { ";" } elseif ($firstLine -match "`t") { "`t" } else { "," }
+
+# Create Excel
+$excel = New-Object -ComObject Excel.Application
+$excel.Visible = $true
+$excel.DisplayAlerts = $false
+$excel.ScreenUpdating = $false
+
+try {
+    $workbook = $excel.Workbooks.Add()
+    $sheet = $workbook.ActiveSheet
+
+    # Read the entire CSV as pure text lines
+    $lines = Get-Content -Path $CsvPath -Encoding Default
+
+    if ($lines.Count -eq 0) {
+        throw "File is empty"
+    }
+
+    # Split first line to know how many columns we have
+    $columns = $lines[0] -split [regex]::Escape($Delimiter)
+    $colCount = $columns.Count
+
+    # Write everything cell by cell as Text
+    for ($row = 0; $row -lt $lines.Count; $row++) {
+        $values = $lines[$row] -split [regex]::Escape($Delimiter)
+
+        for ($col = 0; $col -lt $values.Count; $col++) {
+            # Force the cell to Text format BEFORE writing the value
+            $cell = $sheet.Cells.Item($row + 1, $col + 1)
+            $cell.NumberFormat = "@"          # @ = Text format
+            $cell.Value2 = $values[$col]      # Write as pure text
+        }
+    }
+
+    # Auto-fit columns for better readability
+    $sheet.UsedRange.Columns.AutoFit() | Out-Null
+
+    Write-Host "CSV loaded successfully – all columns forced to Text."
+}
+catch {
+    Write-Error "Failed to import CSV: $_"
+    if ($excel) { $excel.Quit() }
+}
+finally {
+    $excel.ScreenUpdating = $true
+
+    if ($sheet)    { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($sheet)    | Out-Null }
+    if ($workbook) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($workbook) | Out-Null }
+    if ($excel)    { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel)    | Out-Null }
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
+}
