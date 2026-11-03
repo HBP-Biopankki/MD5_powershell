@@ -23,7 +23,7 @@ $errorCount = 0
 Get-ChildItem -Path $rootFolder -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
     try {
         $hash = Get-FileHash -Path $_.FullName -Algorithm MD5 -ErrorAction Stop
-        $line = "$($_.FullName) ; $($hash.Hash)"
+        $line = "$($hash.Hash) ; $($_.FullName)"
         $results += $line
         $fileCount++
         
